@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUMAAIN sign in</title>
+<script>window.__CFG={"url":"https://uvphjbikdefnazlonmma.supabase.co","key":"sb_publishable_gZpjrFyliMQPS9OHz56iJQ_fsTJ-VAz"};</script>
+<style>
+  :root{ color-scheme: light; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+        background:#0f1115; color:#1a1a1a; font:16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; padding:20px; }
+  .card{ width:100%; max-width:400px; background:#fff; border-radius:16px; padding:28px; box-shadow:0 12px 40px rgba(0,0,0,.4); }
+  .brand{ font-weight:700; font-size:20px; letter-spacing:.3px; margin-bottom:18px; }
+  .brand span{ color:#4650c9; }
+  .lead{ font-size:17px; margin:0 0 8px; }
+  .muted{ color:#666; font-size:14px; }
+  input{ width:100%; padding:12px 14px; margin:8px 0; border:1px solid #d6d9de; border-radius:10px; font-size:16px; }
+  button{ width:100%; padding:12px 14px; margin-top:10px; border:0; border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; background:#4650c9; color:#fff; }
+  button.secondary{ background:#eef0f2; color:#333; }
+  button:disabled{ opacity:.6; cursor:default; }
+  ul{ margin:6px 0 0; padding-left:20px; }
+  .err{ color:#b3261e; font-size:14px; margin-top:10px; min-height:1em; }
+</style>
+</head><body>
+<div class="card">
+  <div class="brand">HUMA<span>AI</span>N</div>
+  <div id="loading" class="muted">Loading...</div>
+  <form id="login" style="display:none">
+    <p class="lead">Sign in to continue</p>
+    <input id="email" type="email" placeholder="Email" autocomplete="username" required>
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button id="loginbtn" type="submit">Sign in</button>
+    <p id="loginerr" class="err"></p>
+  </form>
+  <div id="consent" style="display:none">
+    <p class="lead"><b id="clientname">An application</b> wants to connect to your HUMAAIN account.</p>
+    <p class="muted">Reference lookups are read-only. Drafts, knowledge and publishing tools respond only if this login is the enrolled owner. You can disconnect at any time.</p>
+    <div id="scopes"></div>
+    <button id="approve">Allow</button>
+    <button id="deny" class="secondary">Cancel</button>
+    <p id="consenterr" class="err"></p>
+  </div>
+  <div id="error" style="display:none" class="err"></div>
+  <div id="done" style="display:none" class="muted">You can close this window now.</div>
+</div>
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+var cfg = window.__CFG;
+var supabase = createClient(cfg.url, cfg.key);
+var authId = new URLSearchParams(location.search).get("authorization_id");
+function el(id){ return document.getElementById(id); }
+function show(id){ ["loading","login","consent","error","done"].forEach(function(x){ el(x).style.display = (x===id?"block":"none"); }); }
+async function loadConsent(){
+  show("loading");
+  var res = await supabase.auth.oauth.getAuthorizationDetails(authId);
+  if(res.error){ el("error").textContent = res.error.message || "Could not load the request."; show("error"); return; }
+  var d = res.data || {};
+  if(d.redirect_url && !d.client && !d.scope){ location.href = d.redirect_url; return; }
+  var name = (d.client && (d.client.client_name || d.client.name)) || d.client_name || "An application";
+  el("clientname").textContent = name;
+  var scope = d.scope || (d.client && d.client.scope) || "";
+  if(scope && scope.trim()){
+    el("scopes").innerHTML = "<p class='muted'>Requested access:</p><ul>" + scope.trim().split(" ").map(function(s){ return "<li>" + s + "</li>"; }).join("") + "</ul>";
+  }
+  show("consent");
+}
+async function start(){
+  if(!authId){ el("error").textContent = "This link is missing its authorization id. Start the connection again from the app."; show("error"); return; }
+  var u = await supabase.auth.getUser();
+  if(u.data && u.data.user){ await loadConsent(); } else { show("login"); }
+}
+el("login").addEventListener("submit", async function(e){
+  e.preventDefault(); el("loginerr").textContent = ""; el("loginbtn").disabled = true;
+  var r = await supabase.auth.signInWithPassword({ email: el("email").value.trim(), password: el("password").value });
+  el("loginbtn").disabled = false;
+  if(r.error){ el("loginerr").textContent = r.error.message; return; }
+  await loadConsent();
+});
+el("approve").addEventListener("click", async function(){
+  el("approve").disabled = true; el("consenterr").textContent = "";
+  var r = await supabase.auth.oauth.approveAuthorization(authId);
+  if(r.error){ el("consenterr").textContent = r.error.message; el("approve").disabled = false; return; }
+  location.href = r.data.redirect_url;
+});
+el("deny").addEventListener("click", async function(){
+  var r = await supabase.auth.oauth.denyAuthorization(authId);
+  if(r.data && r.data.redirect_url){ location.href = r.data.redirect_url; } else { show("done"); }
+});
+start();
+</script>
+</body></html>
